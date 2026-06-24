@@ -45,6 +45,14 @@ class HuntView(discord.ui.View):
         embed.add_field(name="_data", value=f"{score}|{end_time}|{host_id}|{int(is_host_mode)}|{counts_str}", inline=False)
         return embed
 
+    async def end_hunt_logic(self, message):
+        """リザルト画面へ遷移させる共通処理"""
+        embed = message.embeds[0]
+        data = embed.fields[1].value.split('|')
+        score, end_time, host_id, is_host_mode, counts_str = int(data[0]), int(data[1]), int(data[2]), bool(int(data[3])), data[4].split(',')
+        counts = {k: int(counts_str[idx]) for idx, k in enumerate(POINTS.keys())}
+        await message.edit(embed=self.get_embed(embed.title.split(': ')[1], score, counts, end_time, host_id, is_host_mode, True), view=None)
+
     async def update(self, i, key):
         embed = i.message.embeds[0]
         data = embed.fields[1].value.split('|')
@@ -54,12 +62,14 @@ class HuntView(discord.ui.View):
         if is_host_mode and i.user.id != host_id:
             return await i.response.send_message("ホストのみ操作可能です。", ephemeral=True)
         if time.time() > end_time:
+            await self.end_hunt_logic(i.message)
             return await i.response.send_message("大会は終了しました。", ephemeral=True)
             
         score += POINTS[key]
         counts[key] += 1
         await i.response.edit_message(embed=self.get_embed(embed.title.split(': ')[1], score, counts, end_time, host_id, is_host_mode), view=self)
 
+    # ボタン定義 (h1~h11)
     @discord.ui.button(label="SS", style=discord.ButtonStyle.danger, custom_id="h1")
     async def b1(self, i, b): await self.update(i, "SS")
     @discord.ui.button(label="S", style=discord.ButtonStyle.danger, custom_id="h2")
@@ -82,11 +92,7 @@ class HuntView(discord.ui.View):
     async def c3(self, i, b): await self.update(i, "普通&精巧")
     @discord.ui.button(label="強制終了", style=discord.ButtonStyle.secondary, custom_id="h11")
     async def end_btn(self, i, b):
-        embed = i.message.embeds[0]
-        data = embed.fields[1].value.split('|')
-        score, end_time, host_id, is_host_mode, counts_str = int(data[0]), int(data[1]), int(data[2]), bool(int(data[3])), data[4].split(',')
-        counts = {k: int(counts_str[idx]) for idx, k in enumerate(POINTS.keys())}
-        await i.response.edit_message(embed=self.get_embed(embed.title.split(': ')[1], score, counts, end_time, host_id, is_host_mode, True), view=None)
+        await self.end_hunt_logic(i.message)
 
 class HuntBot(commands.Bot):
     def __init__(self):
@@ -101,13 +107,10 @@ class HuntBot(commands.Bot):
         for guild in self.guilds:
             for channel in guild.text_channels:
                 async for msg in channel.history(limit=50):
-                    # 自分のメッセージかつ、大会中で、ボタンがまだ残っているものだけ対象
                     if msg.author == self.user and msg.embeds and "🏆" in msg.embeds[0].title and msg.components:
                         data = msg.embeds[0].fields[1].value.split('|')
                         if time.time() > int(data[1]):
-                            score, end_time, host_id, is_host_mode, counts_str = int(data[0]), int(data[1]), int(data[2]), bool(int(data[3])), data[4].split(',')
-                            counts = {k: int(counts_str[idx]) for idx, k in enumerate(POINTS.keys())}
-                            await msg.edit(embed=HuntView().get_embed(msg.embeds[0].title.split(': ')[1], score, counts, end_time, host_id, is_host_mode, True), view=None)
+                            await HuntView().end_hunt_logic(msg)
 
 bot = HuntBot()
 
