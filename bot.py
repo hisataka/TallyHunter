@@ -21,7 +21,7 @@ def run_web_server():
 POINTS = {
     "SS": 350, "S": 220, "A": 150, "B": 100, "C": 60, 
     "変ヒル": 200, "豪華": 500, "貴重": 300, "普通&精巧": 200, 
-    "釣り": 50, "原型": 1500
+    "釣り": 50, "原型": 2000
 }
 BOSS_MAPPING = {"SS": "地方伝説すべて", "S": "黄金王獣・純水精霊", "A": "無相草・ダック・霊主", "B": "その他フィールドボス", "C": "急凍樹・爆炎樹"}
 
@@ -126,7 +126,22 @@ class HuntView(discord.ui.View):
     @discord.ui.button(label="原型", style=discord.ButtonStyle.success, custom_id="h12")
     async def c4(self, i, b): await self.update(i, "原型")
     @discord.ui.button(label="強制終了", style=discord.ButtonStyle.secondary, custom_id="h11")
-    async def end_btn(self, i, b): await self.end_hunt_logic(i.message)
+    async def end_btn(self, i: discord.Interaction, b: discord.ui.Button):
+        # データの取得
+        embed = i.message.embeds[0]
+        data = embed.fields[1].value.split('|')
+        host_id = int(data[2])
+        is_host_mode = bool(int(data[3]))
+
+        # ホストモードかつホスト以外なら弾く
+        if is_host_mode and i.user.id != host_id:
+            return await i.response.send_message("強制終了はホストのみ可能です。", ephemeral=True)
+        
+        # 権限チェックOKなら終了処理へ
+        await self.end_hunt_logic(i.message)
+        # 終了ボタンを押した際も応答が必要
+        if not i.response.is_done():
+            await i.response.send_message("大会を強制終了しました。", ephemeral=True)
 
 class ResultView(discord.ui.View):
     def __init__(self, message, end_time, host_id, is_host_mode):
