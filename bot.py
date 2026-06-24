@@ -10,7 +10,7 @@ import asyncio
 load_dotenv()
 
 # =================【設定項目】=================
-TOKEN = "DISCORD_BOT_TOKEN"
+TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 # =============================================
 
 # ポイント・データ定義
