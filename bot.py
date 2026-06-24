@@ -1,7 +1,7 @@
 import os
 import discord
 from discord.ext import commands
-from dotenv import load_dotenv # 追加
+from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
 from discord import app_commands
@@ -15,7 +15,7 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 # =============================================
 
-# --- Flaskの設定（Renderのポートチェックをパスするため） ---
+# --- Flaskの設定 ---
 app = Flask(__name__)
 
 @app.route('/')
@@ -23,39 +23,32 @@ def home():
     return "Bot is running!"
 
 def run_web_server():
-    # Renderは環境変数PORTでポートを指定してくるので、それを使用します
     port = int(os.getenv("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
-# --- ここにあなたのボットの処理を記述 ---
-bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
+# --- ボットの設定 ---
+class HuntBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="!", intents=discord.Intents.all())
 
-@bot.event
-async def on_ready():
-    print(f'--- 起動完了: {bot.user} ---')
-    try:
-        MY_GUILD = discord.Object(id=200494548932231169)
-        bot.tree.copy_global_to(guild=MY_GUILD)
-        synced = await bot.tree.sync(guild=MY_GUILD)
-        print(f'★ 同期成功: {len(synced)} 個のコマンドを同期しました')
-    except Exception as e:
-        print(f'★ 同期失敗: {e}')
+    async def setup_hook(self):
+        # コマンド同期処理
+        try:
+            MY_GUILD = discord.Object(id=200494548932231169)
+            self.tree.copy_global_to(guild=MY_GUILD)
+            synced = await self.tree.sync(guild=MY_GUILD)
+            print(f'★ 同期成功: {len(synced)} 個のコマンドを同期しました')
+        except Exception as e:
+            print(f'★ 同期失敗: {e}')
 
-# --- 実行 ---
-if __name__ == "__main__":
-    # Webサーバーを別スレッドで起動
-    Thread(target=run_web_server, daemon=True).start()
-    
-    # Botの起動
-    bot.run(TOKEN)
+bot = HuntBot()
 
-# ポイント・データ定義
+# ================= ポイント・データ定義 =================
 POINTS = {
     "SS": 350, "S": 220, "A": 150, "B": 100, "C": 60,
     "変ヒル": 200, "豪華": 350, "貴重": 200, "普通&精巧": 120, "釣り": 18
 }
 
-# ランクと対象ボスのマッピング（表示用）
 BOSS_MAPPING = {
     "SS": "地方伝説すべて",
     "S": "黄金王獣・純水精霊",
@@ -64,6 +57,7 @@ BOSS_MAPPING = {
     "C": "急凍樹・爆炎樹"
 }
 
+# ================= クラス定義 =================
 class HuntView(discord.ui.View):
     def __init__(self, team_name, minutes):
         super().__init__(timeout=None)
@@ -74,11 +68,9 @@ class HuntView(discord.ui.View):
         self.is_ended = False
 
     def get_info_text(self):
-        """定数から自動生成する討伐リストとポイント表"""
         lines = ["```css", "[ 討伐対象リスト ]"]
         for rank, desc in BOSS_MAPPING.items():
             lines.append(f"{rank:2} : {desc}")
-        
         lines.append("\n[ ポイント表 ]")
         for k, v in POINTS.items():
             lines.append(f"{k:2}: {v}pt")
@@ -88,7 +80,6 @@ class HuntView(discord.ui.View):
         return "\n".join(lines)
 
     def get_summary_text(self):
-        """最終結果用の詳細表"""
         lines = ["```diff", "+ 狩猟結果詳細", "--------------------------"]
         for k, v in POINTS.items():
             if self.counts[k] > 0:
@@ -112,7 +103,6 @@ class HuntView(discord.ui.View):
         self.counts[key] += 1
         await i.response.edit_message(embed=self.get_embed(), view=self)
 
-    # --- ボタン配置 ---
     @discord.ui.button(label="SS", style=discord.ButtonStyle.danger, row=0)
     async def b1(self, i, b): await self.update(i, "SS")
     @discord.ui.button(label="S", style=discord.ButtonStyle.danger, row=0)
@@ -141,14 +131,7 @@ class HuntView(discord.ui.View):
         self.clear_items()
         await i.response.edit_message(embed=self.get_embed(final=True), view=self)
 
-class HuntBot(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix="!", intents=discord.Intents.default())
-    async def setup_hook(self):
-        await self.tree.sync()
-
-bot = HuntBot()
-
+# ================= コマンド定義 =================
 @bot.tree.command(name="start-hunt", description="狩猟大会を開始")
 async def start(interaction: discord.Interaction, team_name: str, minutes: int = 15):
     view = HuntView(team_name, minutes)
@@ -159,4 +142,7 @@ async def start(interaction: discord.Interaction, team_name: str, minutes: int =
         view.clear_items()
         await interaction.edit_original_response(embed=view.get_embed(final=True), view=view)
 
-bot.run(TOKEN)
+# ================= 実行 =================
+if __name__ == "__main__":
+    Thread(target=run_web_server, daemon=True).start()
+    bot.run(TOKEN)
