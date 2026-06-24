@@ -40,7 +40,13 @@ class HuntView(discord.ui.View):
         info_text += "--------------------------\n"
         info_text += f"現在スコア: {score} pt\n```"
         embed = discord.Embed(title=f"🏆 狩猟大会中: {team_name}", description=info_text, color=discord.Color.blue())
-        embed.add_field(name="終了時間", value=f"<t:{end_time}:t>", inline=False)
+
+        embed.add_field(
+            name="終了時間", 
+            value=f"終了予定: <t:{end_time}:F>\n(残り: <t:{end_time}:R>)", 
+            inline=False
+        )
+
         counts_str = ",".join([str(counts.get(k, 0)) for k in POINTS.keys()])
         embed.add_field(name="_data", value=f"{score}|{end_time}|{host_id}|{int(is_host_mode)}|{counts_str}", inline=False)
         return embed
