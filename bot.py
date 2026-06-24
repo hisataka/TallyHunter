@@ -23,6 +23,10 @@ def home():
     return "Bot is running!"
 
 def run_web_server():
+    # ログをエラーのみに絞り、動作を軽くする
+    import logging
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
+    
     port = int(os.getenv("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
@@ -32,7 +36,7 @@ class HuntBot(commands.Bot):
         super().__init__(command_prefix="!", intents=discord.Intents.all())
 
     async def setup_hook(self):
-        # コマンド同期処理（グローバル）
+        # グローバルコマンド同期
         try:
             synced = await self.tree.sync()
             print(f'★ 同期成功: {len(synced)} 個のグローバルコマンドを同期しました')
@@ -99,15 +103,14 @@ class HuntView(discord.ui.View):
 
     async def update(self, i, key):
         if self.is_ended: return
-        # ホストモードチェック
         if self.is_host_mode and i.user.id != self.host_id:
             await i.response.send_message("この操作はホストのみ可能です。", ephemeral=True)
             return
-
         self.score += POINTS[key]
         self.counts[key] += 1
         await i.response.edit_message(embed=self.get_embed(), view=self)
 
+    # ボタン定義
     @discord.ui.button(label="SS", style=discord.ButtonStyle.danger, row=0)
     async def b1(self, i, b): await self.update(i, "SS")
     @discord.ui.button(label="S", style=discord.ButtonStyle.danger, row=0)
@@ -143,13 +146,21 @@ class HuntView(discord.ui.View):
 @bot.tree.command(name="start-hunt", description="狩猟大会を開始")
 @app_commands.describe(team_name="チーム名", minutes="制限時間(分)", is_host_mode="ホストのみ操作可能にするならTrue")
 async def start(interaction: discord.Interaction, team_name: str, minutes: int = 15, is_host_mode: bool = False):
+    end_time = time.time() + (minutes * 60)
     view = HuntView(interaction.user.id, team_name, minutes, is_host_mode)
+    
     await interaction.response.send_message(embed=view.get_embed(), view=view)
-    await asyncio.sleep(minutes * 60)
+    
+    # 終了時刻までループ監視
+    while time.time() < end_time:
+        if view.is_ended: return 
+        await asyncio.sleep(10)
+    
+    # 時間切れ処理 (followup.sendを使用)
     if not view.is_ended:
         view.is_ended = True
         view.clear_items()
-        await interaction.edit_original_response(embed=view.get_embed(final=True), view=view)
+        await interaction.followup.send(embed=view.get_embed(final=True), view=None)
 
 # ================= 実行 =================
 if __name__ == "__main__":
