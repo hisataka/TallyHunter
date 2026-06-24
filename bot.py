@@ -1,8 +1,13 @@
+import os
 import discord
 from discord.ext import commands
+from dotenv import load_dotenv # 追加
 from discord import app_commands
 import time
 import asyncio
+
+# .envファイルを読み込む
+load_dotenv()
 
 # =================【設定項目】=================
 TOKEN = "DISCORD_BOT_TOKEN"
