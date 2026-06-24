@@ -32,12 +32,14 @@ bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
 
 @bot.event
 async def on_ready():
-    MY_GUILD = discord.Object(id=200494548932231169)
-    bot.tree.copy_global_to(guild=MY_GUILD)
-    synced = await bot.tree.sync(guild=MY_GUILD)
-    print(f'Synced {len(synced)} commands for guild {MY_GUILD.id}')
-    # await bot.tree.sync()
-    # print(f'Logged in as {bot.user}')
+    print(f'--- 起動完了: {bot.user} ---')
+    try:
+        MY_GUILD = discord.Object(id=200494548932231169)
+        bot.tree.copy_global_to(guild=MY_GUILD)
+        synced = await bot.tree.sync(guild=MY_GUILD)
+        print(f'★ 同期成功: {len(synced)} 個のコマンドを同期しました')
+    except Exception as e:
+        print(f'★ 同期失敗: {e}')
 
 # --- 実行 ---
 if __name__ == "__main__":
