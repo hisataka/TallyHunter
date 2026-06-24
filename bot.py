@@ -46,19 +46,31 @@ class HuntView(discord.ui.View):
         return embed
 
     async def end_hunt_logic(self, message):
-        """リザルト画面へ遷移させる共通処理"""
         embed = message.embeds[0]
+        # フィールドが1つしかない場合などを考慮し、安全に取得
         data = embed.fields[1].value.split('|')
-        score, end_time, host_id, is_host_mode, counts_str = int(data[0]), int(data[1]), int(data[2]), bool(int(data[3])), data[4].split(',')
-        counts = {k: int(counts_str[idx]) for idx, k in enumerate(POINTS.keys())}
+        
+        score = int(data[0])
+        end_time = int(data[1])
+        host_id = int(data[2])
+        is_host_mode = bool(int(data[3]))
+        # データ末尾のリスト部分は data[4:] にすべて入っているはず
+        counts_list = data[4].split(',')
+        
+        counts = {k: int(counts_list[idx]) for idx, k in enumerate(POINTS.keys())}
         await message.edit(embed=self.get_embed(embed.title.split(': ')[1], score, counts, end_time, host_id, is_host_mode, True), view=None)
 
     async def update(self, i, key):
         embed = i.message.embeds[0]
         data = embed.fields[1].value.split('|')
-        score, end_time, host_id, is_host_mode, counts_str = int(data[0]), int(data[1]), int(data[2]), bool(int(data[3])), data[4].split(',')
-        counts = {k: int(counts_str[idx]) for idx, k in enumerate(POINTS.keys())}
         
+        score = int(data[0])
+        end_time = int(data[1])
+        host_id = int(data[2])
+        is_host_mode = bool(int(data[3]))
+        counts_list = data[4].split(',')
+        
+        counts = {k: int(counts_list[idx]) for idx, k in enumerate(POINTS.keys())}
         if is_host_mode and i.user.id != host_id:
             return await i.response.send_message("ホストのみ操作可能です。", ephemeral=True)
         if time.time() > end_time:
