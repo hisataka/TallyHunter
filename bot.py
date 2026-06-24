@@ -27,7 +27,7 @@ BOSS_MAPPING = {"SS": "地方伝説すべて", "S": "黄金王獣・純水精霊
 
 class EditCountModal(discord.ui.Modal):
     def __init__(self, message, end_time, host_id, is_host_mode, target_key):
-        super().__init__(title=f'{target_key}の修正')
+        super().__init__(title=f'{target_key}の追加')
         self.message = message
         self.end_time = end_time
         self.host_id = host_id
@@ -38,7 +38,7 @@ class EditCountModal(discord.ui.Modal):
 
     async def on_submit(self, i: discord.Interaction):
         if self.is_host_mode and i.user.id != self.host_id:
-            return await i.response.send_message("ホストのみ修正可能です。", ephemeral=True)
+            return await i.response.send_message("ホストのみ追加可能です。", ephemeral=True)
         try:
             add_count = int(self.count.value)
         except ValueError:
@@ -151,14 +151,14 @@ class ResultView(discord.ui.View):
         self.host_id = host_id
         self.is_host_mode = is_host_mode
 
-    @discord.ui.button(label="釣り数修正", style=discord.ButtonStyle.primary, custom_id="res_fish")
+    @discord.ui.button(label="釣り数追加", style=discord.ButtonStyle.primary, custom_id="res_fish")
     async def fix_fish(self, i: discord.Interaction, b: discord.ui.Button):
-        if self.is_host_mode and i.user.id != self.host_id: return await i.response.send_message("ホストのみ修正可能です。", ephemeral=True)
+        if self.is_host_mode and i.user.id != self.host_id: return await i.response.send_message("ホストのみ追加可能です。", ephemeral=True)
         await i.response.send_modal(EditCountModal(self.message or i.message, self.end_time, self.host_id, self.is_host_mode, "釣り"))
 
-    @discord.ui.button(label="原型数修正", style=discord.ButtonStyle.primary, custom_id="res_proto")
+    @discord.ui.button(label="原型数追加", style=discord.ButtonStyle.primary, custom_id="res_proto")
     async def fix_proto(self, i: discord.Interaction, b: discord.ui.Button):
-        if self.is_host_mode and i.user.id != self.host_id: return await i.response.send_message("ホストのみ修正可能です。", ephemeral=True)
+        if self.is_host_mode and i.user.id != self.host_id: return await i.response.send_message("ホストのみ追加可能です。", ephemeral=True)
         await i.response.send_modal(EditCountModal(self.message or i.message, self.end_time, self.host_id, self.is_host_mode, "原型"))
 
 class HuntBot(commands.Bot):
