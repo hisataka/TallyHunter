@@ -4,9 +4,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from flask import Flask
 from threading import Thread
-from discord import app_commands
 import time
-import asyncio
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
@@ -16,24 +14,14 @@ app = Flask(__name__)
 def home(): return "Bot is running!"
 
 def run_web_server():
-    import logging
-    logging.getLogger('werkzeug').setLevel(logging.ERROR)
-    port = int(os.getenv("PORT", 8080))
+    port = int(os.getenv("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-# ポイント・データ定義
-POINTS = {
-    "SS": 350, "S": 220, "A": 150, "B": 100, "C": 60,
-    "変ヒル": 200, "豪華": 350, "貴重": 200, "普通&精巧": 120, "釣り": 18
-}
-
-BOSS_MAPPING = {
-    "SS": "地方伝説すべて", "S": "黄金王獣・純水精霊", "A": "無相草・ダック・霊主",
-    "B": "その他フィールドボス", "C": "急凍樹・爆炎樹"
-}
+# ポイント・データ定義（変更なし）
+POINTS = {"SS": 350, "S": 220, "A": 150, "B": 100, "C": 60, "変ヒル": 200, "豪華": 350, "貴重": 200, "普通&精巧": 120, "釣り": 18}
+BOSS_MAPPING = {"SS": "地方伝説すべて", "S": "黄金王獣・純水精霊", "A": "無相草・ダック・霊主", "B": "その他フィールドボス", "C": "急凍樹・爆炎樹"}
 
 class HuntView(discord.ui.View):
-    # 永続化（再起動時）は引数なしで呼ばれる
     def __init__(self, host_id=None, team_name=None, end_time=None, is_host_mode=False):
         super().__init__(timeout=None)
         self.host_id = host_id
@@ -47,13 +35,11 @@ class HuntView(discord.ui.View):
         if final:
             lines = ["```diff", "+ 狩猟結果詳細", "--------------------------"]
             for k, v in POINTS.items():
-                if self.counts[k] > 0:
-                    lines.append(f"{k:2}: {self.counts[k]:2}回 × {v:3}pt = {self.counts[k]*v:4}pt")
+                if self.counts[k] > 0: lines.append(f"{k:2}: {self.counts[k]:2}回 × {v:3}pt = {self.counts[k]*v:4}pt")
             lines.append("--------------------------")
             lines.append(f"最終合計: {self.score} pt```")
             return discord.Embed(title=f"🏁 終了: {self.team_name}", description="\n".join(lines), color=discord.Color.gold())
         
-        # 以前の表示内容を完全に復元
         info_text = "```css\n[ 討伐対象リスト ]\n"
         for r, d in BOSS_MAPPING.items(): info_text += f"{r:2} : {d}\n"
         info_text += "\n[ ポイント表 ]\n"
@@ -62,17 +48,21 @@ class HuntView(discord.ui.View):
         info_text += f"現在スコア: {self.score} pt\n```"
         
         embed = discord.Embed(title=f"🏆 狩猟大会中: {self.team_name}", description=info_text, color=discord.Color.blue())
-        embed.add_field(name="残り時間", value=f"<t:{self.end_time}:R>", inline=False)
+        # 【修正】Discordの相対時刻タグで表示
+        embed.add_field(name="終了時間", value=f"<t:{self.end_time}:t> (残り <t:{self.end_time}:R>)", inline=False)
         return embed
 
     async def update(self, i, key):
+        # 終了時刻を過ぎていたらボタンを無効化
+        if time.time() > self.end_time:
+            return await i.response.send_message("大会は終了しました。", ephemeral=True)
         if self.is_host_mode and i.user.id != self.host_id:
             return await i.response.send_message("ホストのみ操作可能です。", ephemeral=True)
         self.score += POINTS[key]
         self.counts[key] += 1
         await i.response.edit_message(embed=self.get_embed(), view=self)
 
-    # 永続化のためcustom_idは固定
+    # ボタンはすべて custom_id を固定して永続化
     @discord.ui.button(label="SS", style=discord.ButtonStyle.danger, custom_id="h1")
     async def b1(self, i, b): await self.update(i, "SS")
     @discord.ui.button(label="S", style=discord.ButtonStyle.danger, custom_id="h2")
