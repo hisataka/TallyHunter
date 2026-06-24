@@ -2,6 +2,8 @@ import os
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv # 追加
+from flask import Flask
+from threading import Thread
 from discord import app_commands
 import time
 import asyncio
@@ -12,6 +14,33 @@ load_dotenv()
 # =================【設定項目】=================
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 # =============================================
+
+# --- Flaskの設定（Renderのポートチェックをパスするため） ---
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_web_server():
+    # Renderは環境変数PORTでポートを指定してくるので、それを使用します
+    port = int(os.getenv("PORT", 8080))
+    app.run(host='0.0.0.0', port=port)
+
+# --- ここにあなたのボットの処理を記述 ---
+bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
+
+@bot.event
+async def on_ready():
+    print(f'Logged in as {bot.user}')
+
+# --- 実行 ---
+if __name__ == "__main__":
+    # Webサーバーを別スレッドで起動
+    Thread(target=run_web_server, daemon=True).start()
+    
+    # Botの起動
+    bot.run(TOKEN)
 
 # ポイント・データ定義
 POINTS = {
