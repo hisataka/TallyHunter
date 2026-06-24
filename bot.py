@@ -21,7 +21,7 @@ def run_web_server():
 POINTS = {
     "SS": 350, "S": 220, "A": 150, "B": 100, "C": 60, 
     "変ヒル": 200, "豪華": 500, "貴重": 300, "普通&精巧": 200, 
-    "釣り": 50, "原型": 300
+    "釣り": 50, "原型": 1500
 }
 BOSS_MAPPING = {"SS": "地方伝説すべて", "S": "黄金王獣・純水精霊", "A": "無相草・ダック・霊主", "B": "その他フィールドボス", "C": "急凍樹・爆炎樹"}
 
@@ -123,7 +123,7 @@ class HuntView(discord.ui.View):
     async def c2(self, i, b): await self.update(i, "貴重")
     @discord.ui.button(label="普通&精巧", style=discord.ButtonStyle.success, custom_id="h10")
     async def c3(self, i, b): await self.update(i, "普通&精巧")
-    @discord.ui.button(label="原型", style=discord.ButtonStyle.secondary, custom_id="h12")
+    @discord.ui.button(label="原型", style=discord.ButtonStyle.success, custom_id="h12")
     async def c4(self, i, b): await self.update(i, "原型")
     @discord.ui.button(label="強制終了", style=discord.ButtonStyle.secondary, custom_id="h11")
     async def end_btn(self, i, b): await self.end_hunt_logic(i.message)
