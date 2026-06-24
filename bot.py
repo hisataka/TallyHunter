@@ -8,38 +8,18 @@ from discord import app_commands
 import time
 import asyncio
 
-# .envファイルを読み込む
 load_dotenv()
-
-# =================【設定項目】=================
 TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-# =============================================
 
-# --- Flaskの設定 ---
 app = Flask(__name__)
-
 @app.route('/')
-def home():
-    return "Bot is running!"
+def home(): return "Bot is running!"
 
 def run_web_server():
+    import logging
+    logging.getLogger('werkzeug').setLevel(logging.ERROR)
     port = int(os.getenv("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
-
-# --- ボットの設定 ---
-class HuntBot(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix="!", intents=discord.Intents.all())
-
-    async def setup_hook(self):
-        # コマンド同期処理（グローバル）
-        try:
-            synced = await self.tree.sync()
-            print(f'★ 同期成功: {len(synced)} 個のグローバルコマンドを同期しました')
-        except Exception as e:
-            print(f'★ 同期失敗: {e}')
-
-bot = HuntBot()
 
 # ================= ポイント・データ定義 =================
 POINTS = {
@@ -47,18 +27,11 @@ POINTS = {
     "変ヒル": 200, "豪華": 350, "貴重": 200, "普通&精巧": 120, "釣り": 18
 }
 
-BOSS_MAPPING = {
-    "SS": "地方伝説すべて",
-    "S": "黄金王獣・純水精霊",
-    "A": "無相草・ダック・霊主",
-    "B": "その他フィールドボス",
-    "C": "急凍樹・爆炎樹"
-}
-
 # ================= クラス定義 =================
 class HuntView(discord.ui.View):
-    def __init__(self, host_id, team_name, minutes, is_host_mode):
-        super().__init__(timeout=None)
+    # 永続化用コンストラクタ
+    def __init__(self, host_id=None, team_name="大会", minutes=15, is_host_mode=False):
+        super().__init__(timeout=None) 
         self.host_id = host_id
         self.team_name = team_name
         self.is_host_mode = is_host_mode
@@ -67,103 +40,75 @@ class HuntView(discord.ui.View):
         self.end_time = int(time.time()) + (minutes * 60)
         self.is_ended = False
 
-    def get_info_text(self):
-        lines = ["```css", "[ 討伐対象リスト ]"]
-        for rank, desc in BOSS_MAPPING.items():
-            lines.append(f"{rank:2} : {desc}")
-        lines.append("\n[ ポイント表 ]")
-        for k, v in POINTS.items():
-            lines.append(f"{k:2}: {v}pt")
-        lines.append("--------------------------")
-        lines.append(f"現在スコア: {self.score} pt")
-        lines.append("```")
-        return "\n".join(lines)
-
-    def get_summary_text(self):
-        lines = ["```diff", "+ 狩猟結果詳細", "--------------------------"]
-        for k, v in POINTS.items():
-            if self.counts[k] > 0:
-                lines.append(f"{k:2}: {self.counts[k]:2}回 × {v:3}pt = {self.counts[k]*v:4}pt")
-        lines.append("--------------------------")
-        lines.append(f"最終合計: {self.score} pt")
-        lines.append("```")
-        return "\n".join(lines)
-
     def get_embed(self, final=False):
         if final:
-            embed = discord.Embed(title=f"🏁 終了: {self.team_name}", description=self.get_summary_text(), color=discord.Color.gold())
-        else:
-            embed = discord.Embed(title=f"🏆 狩猟大会中: {self.team_name}", description=self.get_info_text(), color=discord.Color.blue())
-            embed.add_field(name="残り時間", value=f"<t:{self.end_time}:R>", inline=False)
+            embed = discord.Embed(title=f"🏁 終了: {self.team_name}", color=discord.Color.gold())
+            desc = "\n".join([f"{k}: {v}回" for k, v in self.counts.items() if v > 0])
+            embed.description = f"最終合計: {self.score}pt\n\n{desc}"
+            return embed
+        embed = discord.Embed(title=f"🏆 狩猟大会中: {self.team_name}", color=discord.Color.blue())
+        embed.add_field(name="残り時間", value=f"<t:{self.end_time}:R>", inline=False)
         return embed
 
     async def update(self, i, key):
-        if self.is_ended: return
-        # ホストモードチェック
         if self.is_host_mode and i.user.id != self.host_id:
-            await i.response.send_message("この操作はホストのみ可能です。", ephemeral=True)
-            return
-
+            return await i.response.send_message("ホストのみ操作可能です。", ephemeral=True)
         self.score += POINTS[key]
         self.counts[key] += 1
         await i.response.edit_message(embed=self.get_embed(), view=self)
 
-    @discord.ui.button(label="SS", style=discord.ButtonStyle.danger, row=0)
+    # 各ボタンに custom_id を設定して永続化に対応
+    @discord.ui.button(label="SS", style=discord.ButtonStyle.danger, custom_id="hunt_ss")
     async def b1(self, i, b): await self.update(i, "SS")
-    @discord.ui.button(label="S", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label="S", style=discord.ButtonStyle.danger, custom_id="hunt_s")
     async def b2(self, i, b): await self.update(i, "S")
-    @discord.ui.button(label="A", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label="A", style=discord.ButtonStyle.danger, custom_id="hunt_a")
     async def b3(self, i, b): await self.update(i, "A")
-    @discord.ui.button(label="B", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label="B", style=discord.ButtonStyle.danger, custom_id="hunt_b")
     async def b4(self, i, b): await self.update(i, "B")
-    @discord.ui.button(label="C", style=discord.ButtonStyle.danger, row=0)
+    @discord.ui.button(label="C", style=discord.ButtonStyle.danger, custom_id="hunt_c")
     async def b5(self, i, b): await self.update(i, "C")
-
-    @discord.ui.button(label="変ヒル", style=discord.ButtonStyle.danger, row=1)
+    @discord.ui.button(label="変ヒル", style=discord.ButtonStyle.danger, custom_id="hunt_h")
     async def b6(self, i, b): await self.update(i, "変ヒル")
-    @discord.ui.button(label="釣り", style=discord.ButtonStyle.primary, row=1)
+    @discord.ui.button(label="釣り", style=discord.ButtonStyle.primary, custom_id="hunt_f")
     async def b7(self, i, b): await self.update(i, "釣り")
-    @discord.ui.button(label="豪華", style=discord.ButtonStyle.success, row=1)
+    @discord.ui.button(label="豪華", style=discord.ButtonStyle.success, custom_id="hunt_g")
     async def c1(self, i, b): await self.update(i, "豪華")
-    @discord.ui.button(label="貴重", style=discord.ButtonStyle.success, row=1)
+    @discord.ui.button(label="貴重", style=discord.ButtonStyle.success, custom_id="hunt_ki")
     async def c2(self, i, b): await self.update(i, "貴重")
-    @discord.ui.button(label="普通&精巧", style=discord.ButtonStyle.success, row=1)
+    @discord.ui.button(label="普通&精巧", style=discord.ButtonStyle.success, custom_id="hunt_p")
     async def c3(self, i, b): await self.update(i, "普通&精巧")
-
-    @discord.ui.button(label="強制終了", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="強制終了", style=discord.ButtonStyle.secondary, custom_id="hunt_end")
     async def end_btn(self, i, b):
-        if self.is_host_mode and i.user.id != self.host_id:
-            await i.response.send_message("この操作はホストのみ可能です。", ephemeral=True)
-            return
         self.is_ended = True
-        self.clear_items()
-        await i.response.edit_message(embed=self.get_embed(final=True), view=self)
+        await i.response.edit_message(embed=self.get_embed(final=True), view=None)
 
-# ================= コマンド定義の修正 =================
+class HuntBot(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix="!", intents=discord.Intents.all())
+    async def setup_hook(self):
+        # 永続化用Viewはインスタンス生成時に引数を渡さない
+        self.add_view(HuntView()) 
+        synced = await self.tree.sync()
+        print(f'★ 同期完了: {len(synced)} 個のコマンド')
+
+bot = HuntBot()
+
 @bot.tree.command(name="start-hunt", description="狩猟大会を開始")
-@app_commands.describe(team_name="チーム名", minutes="制限時間(分)", is_host_mode="ホストのみ操作可能にするならTrue")
 async def start(interaction: discord.Interaction, team_name: str, minutes: int = 15, is_host_mode: bool = False):
-    # インスタンス化
     view = HuntView(interaction.user.id, team_name, minutes, is_host_mode)
-    
-    # メッセージ送信
     await interaction.response.send_message(embed=view.get_embed(), view=view)
     
-    # 【修正】終了までループで監視
-    # time.time()はサーバーの再起動の影響を受けないため、これに基づけば正確に終了できます
+    # 終了監視ループ
     while time.time() < view.end_time:
-        if view.is_ended:
-            return # 強制終了ボタンが押されたらループを抜ける
-        await asyncio.sleep(10) # 10秒おきにチェック
+        if view.is_ended: return
+        await asyncio.sleep(10)
     
-    # 終了処理
     if not view.is_ended:
         view.is_ended = True
-        view.clear_items()
-        # 編集ではなく、フォローアップで結果を送信
-        await interaction.followup.send(embed=view.get_embed(final=True), view=None)
+        # view=discord.ui.View() でボタンなしViewを渡す
+        await interaction.followup.send(embed=view.get_embed(final=True), view=discord.ui.View())
 
-# ================= 実行 =================
 if __name__ == "__main__":
     Thread(target=run_web_server, daemon=True).start()
     bot.run(TOKEN)
