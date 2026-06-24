@@ -17,8 +17,40 @@ def run_web_server():
     port = int(os.getenv("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-POINTS = {"SS": 350, "S": 220, "A": 150, "B": 100, "C": 60, "変ヒル": 200, "豪華": 350, "貴重": 200, "普通&精巧": 120, "釣り": 18}
+POINTS = {"SS": 350, "S": 220, "A": 150, "B": 100, "C": 60, "変ヒル": 200, "豪華": 500, "貴重": 300, "普通&精巧": 200, "釣り": 50}
 BOSS_MAPPING = {"SS": "地方伝説すべて", "S": "黄金王獣・純水精霊", "A": "無相草・ダック・霊主", "B": "その他フィールドボス", "C": "急凍樹・爆炎樹"}
+
+class FishingModal(discord.ui.Modal, title='釣り数の修正'):
+    count = discord.ui.TextInput(label='追加する釣り数', placeholder='半角数字で入力', required=True)
+
+    def __init__(self, message, end_time, host_id, is_host_mode):
+        super().__init__()
+        self.message = message
+        self.end_time = end_time
+        self.host_id = host_id
+        self.is_host_mode = is_host_mode
+
+    async def on_submit(self, i: discord.Interaction):
+        try:
+            add_count = int(self.count.value)
+        except ValueError:
+            return await i.response.send_message("数字で入力してください。", ephemeral=True)
+
+        # 既存データの抽出と更新
+        embed = self.message.embeds[0]
+        data = embed.fields[1].value.split('|')
+        score = int(data[0])
+        counts_str = data[4].split(',')
+        counts = {k: int(counts_str[idx]) for idx, k in enumerate(POINTS.keys())}
+        
+        # 釣り数を更新してスコアを再計算
+        old_fish = counts["釣り"]
+        counts["釣り"] += add_count
+        score += (add_count * POINTS["釣り"])
+        
+        # 結果画面を再生成
+        new_embed = HuntView().get_embed(embed.title.split(': ')[1], score, counts, self.end_time, self.host_id, self.is_host_mode, True)
+        await i.response.edit_message(embed=new_embed, view=ResultView(self.message, self.end_time, self.host_id, self.is_host_mode))
 
 class HuntView(discord.ui.View):
     def __init__(self):
@@ -64,7 +96,12 @@ class HuntView(discord.ui.View):
         counts_list = data[4].split(',')
         
         counts = {k: int(counts_list[idx]) for idx, k in enumerate(POINTS.keys())}
-        await message.edit(embed=self.get_embed(embed.title.split(': ')[1], score, counts, end_time, host_id, is_host_mode, True), view=None)
+
+        await message.edit(
+            embed=self.get_embed(embed.title.split(': ')[1], score, counts, end_time, host_id, is_host_mode, True), 
+            view=ResultView(message, end_time, host_id, is_host_mode)
+        )
+
 
     async def update(self, i, key):
         embed = i.message.embeds[0]
@@ -112,11 +149,25 @@ class HuntView(discord.ui.View):
     async def end_btn(self, i, b):
         await self.end_hunt_logic(i.message)
 
+class ResultView(discord.ui.View):
+    def __init__(self, message, end_time, host_id, is_host_mode):
+        super().__init__(timeout=None)
+        self.message = message
+        self.end_time = end_time
+        self.host_id = host_id
+        self.is_host_mode = is_host_mode
+
+    @discord.ui.button(label="釣り数を修正", style=discord.ButtonStyle.primary, custom_id="res_fix")
+    async def fix_btn(self, i: discord.Interaction, b: discord.ui.Button):
+        message = self.message or i.message
+        await i.response.send_modal(FishingModal(message, self.end_time, self.host_id, self.is_host_mode))
+
 class HuntBot(commands.Bot):
     def __init__(self):
         super().__init__(command_prefix="!", intents=discord.Intents.all())
     async def setup_hook(self):
         self.add_view(HuntView())
+        self.add_view(ResultView(None, None, None, None))
         self.auto_end.start()
         await self.tree.sync()
 
