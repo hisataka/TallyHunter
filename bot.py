@@ -32,8 +32,12 @@ bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
-    print(f'Logged in as {bot.user}')
+    MY_GUILD = discord.Object(id=200494548932231169)
+    bot.tree.copy_global_to(guild=MY_GUILD)
+    synced = await bot.tree.sync(guild=MY_GUILD)
+    print(f'Synced {len(synced)} commands for guild {MY_GUILD.id}')
+    # await bot.tree.sync()
+    # print(f'Logged in as {bot.user}')
 
 # --- 実行 ---
 if __name__ == "__main__":
