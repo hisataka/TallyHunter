@@ -32,6 +32,7 @@ bot = commands.Bot(command_prefix="!", intents=discord.Intents.all())
 
 @bot.event
 async def on_ready():
+    await bot.tree.sync()
     print(f'Logged in as {bot.user}')
 
 # --- 実行 ---
