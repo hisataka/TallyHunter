@@ -32,12 +32,8 @@ class HuntBot(commands.Bot):
         super().__init__(command_prefix="!", intents=discord.Intents.all())
 
     async def setup_hook(self):
-        # コマンド同期処理
+        # コマンド同期処理（グローバル）
         try:
-            # MY_GUILD = discord.Object(id=200494548932231169)
-            # self.tree.copy_global_to(guild=MY_GUILD)
-            # synced = await self.tree.sync(guild=MY_GUILD)
-            # print(f'★ 同期成功: {len(synced)} 個のコマンドを同期しました')
             synced = await self.tree.sync()
             print(f'★ 同期成功: {len(synced)} 個のグローバルコマンドを同期しました')
         except Exception as e:
@@ -61,9 +57,11 @@ BOSS_MAPPING = {
 
 # ================= クラス定義 =================
 class HuntView(discord.ui.View):
-    def __init__(self, team_name, minutes):
+    def __init__(self, host_id, team_name, minutes, is_host_mode):
         super().__init__(timeout=None)
+        self.host_id = host_id
         self.team_name = team_name
+        self.is_host_mode = is_host_mode
         self.score = 0
         self.counts = {k: 0 for k in POINTS.keys()}
         self.end_time = int(time.time()) + (minutes * 60)
@@ -101,6 +99,11 @@ class HuntView(discord.ui.View):
 
     async def update(self, i, key):
         if self.is_ended: return
+        # ホストモードチェック
+        if self.is_host_mode and i.user.id != self.host_id:
+            await i.response.send_message("この操作はホストのみ可能です。", ephemeral=True)
+            return
+
         self.score += POINTS[key]
         self.counts[key] += 1
         await i.response.edit_message(embed=self.get_embed(), view=self)
@@ -129,14 +132,18 @@ class HuntView(discord.ui.View):
 
     @discord.ui.button(label="強制終了", style=discord.ButtonStyle.secondary, row=2)
     async def end_btn(self, i, b):
+        if self.is_host_mode and i.user.id != self.host_id:
+            await i.response.send_message("この操作はホストのみ可能です。", ephemeral=True)
+            return
         self.is_ended = True
         self.clear_items()
         await i.response.edit_message(embed=self.get_embed(final=True), view=self)
 
 # ================= コマンド定義 =================
 @bot.tree.command(name="start-hunt", description="狩猟大会を開始")
-async def start(interaction: discord.Interaction, team_name: str, minutes: int = 15):
-    view = HuntView(team_name, minutes)
+@app_commands.describe(team_name="チーム名", minutes="制限時間(分)", is_host_mode="ホストのみ操作可能にするならTrue")
+async def start(interaction: discord.Interaction, team_name: str, minutes: int = 15, is_host_mode: bool = False):
+    view = HuntView(interaction.user.id, team_name, minutes, is_host_mode)
     await interaction.response.send_message(embed=view.get_embed(), view=view)
     await asyncio.sleep(minutes * 60)
     if not view.is_ended:
