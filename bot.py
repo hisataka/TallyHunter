@@ -34,10 +34,12 @@ class HuntBot(commands.Bot):
     async def setup_hook(self):
         # コマンド同期処理
         try:
-            MY_GUILD = discord.Object(id=200494548932231169)
-            self.tree.copy_global_to(guild=MY_GUILD)
-            synced = await self.tree.sync(guild=MY_GUILD)
-            print(f'★ 同期成功: {len(synced)} 個のコマンドを同期しました')
+            # MY_GUILD = discord.Object(id=200494548932231169)
+            # self.tree.copy_global_to(guild=MY_GUILD)
+            # synced = await self.tree.sync(guild=MY_GUILD)
+            # print(f'★ 同期成功: {len(synced)} 個のコマンドを同期しました')
+            synced = await self.tree.sync()
+            print(f'★ 同期成功: {len(synced)} 個のグローバルコマンドを同期しました')
         except Exception as e:
             print(f'★ 同期失敗: {e}')
 
