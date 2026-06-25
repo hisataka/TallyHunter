@@ -179,6 +179,14 @@ async def start(interaction: discord.Interaction, team_name: str, minutes: int =
     view = HuntView()
     await interaction.response.send_message(embed=view.get_embed(team_name, 0, counts, end_t, interaction.user.id, is_host_mode), view=view)
 
+def get_trial_meta(message):
+    data = [f.value for f in message.embeds[0].fields if f.name == "_data"][0].split(',')
+
+    host_id = int(data[10])
+    is_host_mode = bool(int(data[11]))
+
+    return host_id, is_host_mode
+
 def calculate_extreme_score(d):
     def get_artifact_coeff(s):
         if s >= 200: return 0.25
@@ -303,14 +311,40 @@ class ExtremeTrialView(discord.ui.View):
 
     @discord.ui.button(label="入力1", style=discord.ButtonStyle.primary, custom_id="tr_1")
     async def b1(self, i, b):
+        host_id, is_host_mode = get_trial_meta(i.message)
+
+        if not is_authorized(i, host_id, is_host_mode):
+            return await i.response.send_message(
+                "ホストのみ操作可能です。",
+                ephemeral=True
+            )
+
         await i.response.send_modal(TrialEditModal(i.message, 1))
 
     @discord.ui.button(label="入力2", style=discord.ButtonStyle.primary, custom_id="tr_2")
     async def b2(self, i, b):
+        host_id, is_host_mode = get_trial_meta(i.message)
+
+        if not is_authorized(i, host_id, is_host_mode):
+            return await i.response.send_message(
+                "ホストのみ操作可能です。",
+                ephemeral=True
+            )
+
         await i.response.send_modal(TrialEditModal(i.message, 2))
+
 
     @discord.ui.button(label="計算実行", style=discord.ButtonStyle.success, custom_id="tr_calc")
     async def b3(self, i, b):
+        host_id, is_host_mode = get_trial_meta(i.message)
+
+        if not is_authorized(i, host_id, is_host_mode):
+            return await i.response.send_message(
+                "ホストのみ操作可能です。",
+                ephemeral=True
+            )
+
+
         data_str = [f.value for f in i.message.embeds[0].fields if f.name == "_data"][0]
         d_list = data_str.split(',')
 
@@ -346,11 +380,17 @@ class ExtremeTrialView(discord.ui.View):
 async def extreme_trial(
     interaction: discord.Interaction,
     team_name: str,
-    time_limit: int = 300
+    time_limit: int = 300,
+    is_host_mode: bool = False
 ):
     view = ExtremeTrialView()
 
-    initial_data = f"150.0,0,0,0,0,0,0,0,60,{time_limit}"
+    initial_data = (
+        f"150.0,0,0,0,0,0,0,0,60,"
+        f"{time_limit},"
+        f"{interaction.user.id},"
+        f"{int(is_host_mode)}"
+    )
 
     embed = build_extreme_embed(team_name, initial_data)
 
