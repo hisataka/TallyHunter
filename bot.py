@@ -196,7 +196,7 @@ def calculate_extreme_score(d):
     c_coeff = max(0.05, c_coeff - c_penalty)
 
     w_coeff = 2.25 - (d['w5_count'] * 0.5) + (d['w3_count'] * 0.5)
-    w_penalty = (d['max_w_refine'] * 0.25) + (d['sum_w_refine'] / 15)
+    w_penalty = (d['max_w_refine'] * 0.2) + (d['sum_w_refine'] / 15)
     w_coeff = max(0.05, w_coeff - w_penalty)
 
     a_coeff = get_artifact_coeff(d['artifact_score'])
@@ -214,8 +214,8 @@ def build_extreme_embed(team_name, data_str, result=None):
     labels = [
         ("①聖遺物スコア", d[0]),
         ("②☆5キャラ人数", d[1]),
-        ("③最大凸数", d[2]),
-        ("④その他凸合計", d[3]),
+        ("③最大キャラ凸数", d[2]),
+        ("④その他キャラ凸合計", d[3]),
         ("⑤☆5武器数", d[4]),
         ("⑥☆3武器数", d[5]),
         ("⑦最多凸武器精錬", d[6]),
