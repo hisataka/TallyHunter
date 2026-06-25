@@ -157,6 +157,7 @@ class HuntBot(commands.Bot):
     async def setup_hook(self):
         self.add_view(HuntView())
         self.add_view(ResultView()) # デフォルト引数で初期化可能に
+        self.add_view(ExtremeTrialView())
         self.auto_end.start()
         await self.tree.sync()
 
@@ -178,83 +179,102 @@ async def start(interaction: discord.Interaction, team_name: str, minutes: int =
     view = HuntView()
     await interaction.response.send_message(embed=view.get_embed(team_name, 0, counts, end_t, interaction.user.id, is_host_mode), view=view)
 
-# --- 極限トライアル用View ---
+def calculate_extreme_score(d):
+    def get_artifact_coeff(s):
+        if s >= 200: return 0.25
+        if s >= 180: return 0.5
+        if s >= 170: return 0.75
+        if s >= 160: return 1.0
+        if s >= 140: return 1.75
+        if s >= 120: return 2.5
+        if s >= 100: return 3.5
+        return 6.0
+
+    # d['char_count'] などを使って計算
+    base_char = {4: 0.25, 3: 0.5, 2: 1.0, 1: 1.75, 0: 3.0}
+    c_coeff = base_char.get(d['char_count'], 0.25)
+    c_penalty = (d['max_c_const'] * 0.15) + (d['sum_c_const'] / 10)
+    c_coeff = max(0.05, c_coeff - c_penalty)
+
+    w_coeff = 2.25 - (d['w5_count'] * 0.5) + (d['w3_count'] * 0.5)
+    w_penalty = (d['max_w_refine'] * 0.25) + (d['sum_w_refine'] / 15)
+    w_coeff = max(0.05, w_coeff - w_penalty)
+
+    a_coeff = get_artifact_coeff(d['artifact_score'])
+    limit = 300
+    time_score = limit - (d['time']**2 / limit) if d['time'] <= limit else 0
+    score = (a_coeff + c_coeff + w_coeff) * max(0, time_score)
+    
+    return score, a_coeff, c_coeff, w_coeff
+
+# --- 修正用モーダル (分割して定義) ---
+class TrialEditModal(discord.ui.Modal):
+    def __init__(self, message, part):
+        # 項目数に合わせてモーダルを切り替える
+        title = "極限トライアル入力 (1/2: 聖遺物・キャラ)" if part == 1 else "極限トライアル入力 (2/2: 武器・タイム)"
+        super().__init__(title=title)
+        self.message = message
+        self.part = part
+        # _data から現在の値を取得
+        data = [f.value for f in message.embeds[0].fields if f.name == "_data"][0].split(',')
+        self.d = data
+        
+        self.inputs = []
+        labels = [
+            ["①聖遺物スコア", "②☆5キャラ人数", "③最大凸数", "④その他凸合計", "⑤☆5武器数"],
+            ["⑥☆3武器数", "⑦最多凸武器精錬", "⑧その他武器精錬合計", "⑨討伐タイム(秒)"]
+        ]
+        
+        for label in labels[part-1]:
+            # 現在の値をデフォルト値としてセット
+            idx = labels[0].index(label) if part == 1 else labels[1].index(label) + 5
+            ti = discord.ui.TextInput(label=label, default=str(self.d[idx]), style=discord.TextStyle.short)
+            self.add_item(ti)
+            self.inputs.append(ti)
+
+    async def on_submit(self, i: discord.Interaction):
+        new_d = self.d[:]
+        for idx, ti in enumerate(self.inputs):
+            target_idx = idx if self.part == 1 else idx + 5
+            new_d[target_idx] = ti.value
+        
+        # Embedの更新 (現在の内容を保持して_dataだけ書き換える)
+        embed = i.message.embeds[0]
+        embed.set_field_at(0, name="_data", value=",".join(new_d), inline=False)
+        # 必要に応じて description の表示もここで更新可能
+        await i.response.edit_message(embed=embed)
+
+# --- Viewクラス (ボタンのみ) ---
 class ExtremeTrialView(discord.ui.View):
-    def __init__(self, team_name, data=None):
-        super().__init__(timeout=None)
-        self.team_name = team_name
-        # data: {a_score, c_count, max_c, sum_c, w5, w3, max_w, sum_w, time}
-        self.d = data or {'a_score':0.0, 'c_count':0, 'max_c':0, 'sum_c':0, 'w5':0, 'w3':0, 'max_w':1, 'sum_w':0, 'time':0}
+    def __init__(self): super().__init__(timeout=None)
 
-    def get_embed(self):
-        desc = f"```css\n[ 現在の入力状況 ]\n" \
-               f"1.聖遺物スコア: {self.d['a_score']}\n2.☆5キャラ人数: {self.d['c_count']}\n" \
-               f"3.最大凸数: {self.d['max_c']}\n4.その他凸合計: {self.d['sum_c']}\n" \
-               f"5.☆5武器数: {self.d['w5']}\n6.☆3武器数: {self.d['w3']}\n" \
-               f"7.最大武器精錬: {self.d['max_w']}\n8.その他精錬合計: {self.d['sum_w']}\n" \
-               f"9.討伐タイム: {self.d['time']}秒\n```"
-        data_str = "|".join(map(str, self.d.values()))
-        embed = discord.Embed(title=f"極限編成トライアル: {self.team_name}", description=desc, color=discord.Color.purple())
-        embed.add_field(name="_data", value=data_str, inline=False)
-        return embed
-
-    @discord.ui.button(label="入力1 (1-5)", style=discord.ButtonStyle.primary)
-    async def b1(self, i, b):
-        await i.response.send_modal(InputModal1(self))
-
-    @discord.ui.button(label="入力2 (6-9)", style=discord.ButtonStyle.primary)
-    async def b2(self, i, b):
-        await i.response.send_modal(InputModal2(self))
-
-    @discord.ui.button(label="計算実行", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="入力1 (1-5)", style=discord.ButtonStyle.primary, custom_id="tr_1")
+    async def b1(self, i, b): await i.response.send_modal(TrialEditModal(i.message, 1))
+    
+    @discord.ui.button(label="入力2 (6-9)", style=discord.ButtonStyle.primary, custom_id="tr_2")
+    async def b2(self, i, b): await i.response.send_modal(TrialEditModal(i.message, 2))
+    
+    @discord.ui.button(label="計算実行", style=discord.ButtonStyle.success, custom_id="tr_calc")
     async def b3(self, i, b):
-        # 計算ロジックを呼び出して結果表示
-        score, a, c, w = calculate_extreme_score({
-            'artifact_score': self.d['a_score'], 'char_count': self.d['c_count'],
-            'max_c_const': self.d['max_c'], 'sum_c_const': self.d['sum_c'],
-            'w5_count': self.d['w5'], 'w3_count': self.d['w3'],
-            'max_w_refine': self.d['max_w'], 'sum_w_refine': self.d['sum_w'],
-            'time': self.d['time'], 'limit': 300
-        })
-        embed = discord.Embed(title=f"計算結果: {self.team_name}", color=discord.Color.gold())
-        embed.description = f"トータルスコア: **{score:.2f} pt**"
-        await i.response.send_message(embed=embed)
+        data_str = [f.value for f in i.message.embeds[0].fields if f.name == "_data"][0]
+        d_list = data_str.split(',')
+        # d_list を辞書に変換して計算関数に渡す
+        d = {'artifact_score': float(d_list[0]), 'char_count': int(d_list[1]), 'max_c_const': int(d_list[2]), 
+             'sum_c_const': int(d_list[3]), 'w5_count': int(d_list[4]), 'w3_count': int(d_list[5]), 
+             'max_w_refine': int(d_list[6]), 'sum_w_refine': int(d_list[7]), 'time': int(d_list[8])}
+        
+        score, a, c, w = calculate_extreme_score(d) # 既存の計算関数を呼び出し
+        await i.response.send_message(f"計算結果: {score:.2f} pt (聖遺物:{a}, キャラ:{c:.2f}, 武器:{w:.2f})", ephemeral=True)
 
-# --- モーダル定義 (簡易版) ---
-class InputModal1(discord.ui.Modal, title="入力1 (1-5)"):
-    def __init__(self, view):
-        super().__init__()
-        self.view = view
-        self.f1 = discord.ui.TextInput(label="①聖遺物スコア", default=str(view.d['a_score']), style=discord.TextStyle.short)
-        self.f2 = discord.ui.TextInput(label="②☆5キャラ人数", default=str(view.d['c_count']), style=discord.TextStyle.short)
-        self.f3 = discord.ui.TextInput(label="③最大凸数", default=str(view.d['max_c']), style=discord.TextStyle.short)
-        self.f4 = discord.ui.TextInput(label="④その他凸合計", default=str(view.d['sum_c']), style=discord.TextStyle.short)
-        self.f5 = discord.ui.TextInput(label="⑤☆5武器本数", default=str(view.d['w5']), style=discord.TextStyle.short)
-        for f in [self.f1, self.f2, self.f3, self.f4, self.f5]: self.add_item(f)
-
-    async def on_submit(self, i):
-        self.view.d.update({'a_score':float(self.f1.value), 'c_count':int(self.f2.value), 'max_c':int(self.f3.value), 'sum_c':int(self.f4.value), 'w5':int(self.f5.value)})
-        await i.response.edit_message(embed=self.view.get_embed())
-
-class InputModal2(discord.ui.Modal, title="入力2 (6-9)"):
-    def __init__(self, view):
-        super().__init__()
-        self.view = view
-        self.f6 = discord.ui.TextInput(label="⑥☆3武器本数", default=str(view.d['w3']), style=discord.TextStyle.short)
-        self.f7 = discord.ui.TextInput(label="⑦最大武器精錬", default=str(view.d['max_w']), style=discord.TextStyle.short)
-        self.f8 = discord.ui.TextInput(label="⑧その他精錬合計", default=str(view.d['sum_w']), style=discord.TextStyle.short)
-        self.f9 = discord.ui.TextInput(label="⑨討伐タイム", default=str(view.d['time']), style=discord.TextStyle.short)
-        for f in [self.f6, self.f7, self.f8, self.f9]: self.add_item(f)
-
-    async def on_submit(self, i):
-        self.view.d.update({'w3':int(self.f6.value), 'max_w':int(self.f7.value), 'sum_w':int(self.f8.value), 'time':int(self.f9.value)})
-        await i.response.edit_message(embed=self.view.get_embed())
-
-# --- コマンド ---
+# --- 起動コマンド ---
 @bot.tree.command(name="extreme-trial", description="極限編成トライアルを開始")
 async def extreme_trial(interaction: discord.Interaction, team_name: str):
-    view = ExtremeTrialView(team_name)
-    await interaction.response.send_message(embed=view.get_embed(), view=view)
+    view = ExtremeTrialView()
+    # 初期データ (9項目分)
+    initial_data = "200.0,4,0,0,0,0,1,0,60"
+    embed = discord.Embed(title=f"極限編成トライアル: {team_name}", color=discord.Color.purple())
+    embed.add_field(name="_data", value=initial_data, inline=False)
+    await interaction.response.send_message(embed=embed, view=view)
 
 if __name__ == "__main__":
     Thread(target=run_web_server, daemon=True).start()
