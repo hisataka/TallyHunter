@@ -123,13 +123,13 @@ class ResultView(discord.ui.View):
         data = [f.value for f in message.embeds[0].fields if f.name == "_data"][0].split('|')
         return {k: int(data[4].split(',')[idx]) for idx, k in enumerate(POINTS.keys())}
 
-    @discord.ui.button(label="討伐修正", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="討伐修正", style=discord.ButtonStyle.danger, custom_id="res_fix_hunt")
     async def fix_hunt(self, i, b):
         await i.response.send_modal(EditModal(i.message, self.end_time, self.host_id, self.is_host_mode, self.get_counts_static(i.message), ["SS", "S", "A", "B", "C"], "討伐修正"))
-    @discord.ui.button(label="変ヒル修正", style=discord.ButtonStyle.primary)
+    @discord.ui.button(label="変ヒル修正", style=discord.ButtonStyle.primary, custom_id="res_fix_hilly")
     async def fix_hilly(self, i, b):
         await i.response.send_modal(EditModal(i.message, self.end_time, self.host_id, self.is_host_mode, self.get_counts_static(i.message), ["変ヒル"], "変ヒル修正"))
-    @discord.ui.button(label="採集修正", style=discord.ButtonStyle.success)
+    @discord.ui.button(label="採集修正", style=discord.ButtonStyle.success, custom_id="res_fix_collect")
     async def fix_collect(self, i, b):
         await i.response.send_modal(EditModal(i.message, self.end_time, self.host_id, self.is_host_mode, self.get_counts_static(i.message), ["釣り", "豪華", "貴重", "普通&精巧", "原型"], "採集修正"))
 
