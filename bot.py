@@ -207,74 +207,155 @@ def calculate_extreme_score(d):
     
     return score, a_coeff, c_coeff, w_coeff
 
-# --- 修正用モーダル (分割して定義) ---
+def build_extreme_embed(team_name, data_str, result=None):
+    d = data_str.split(',')
+
+    labels = [
+        ("①聖遺物スコア", d[0]),
+        ("②☆5キャラ人数", d[1]),
+        ("③最大凸数", d[2]),
+        ("④その他凸合計", d[3]),
+        ("⑤☆5武器数", d[4]),
+        ("⑥☆3武器数", d[5]),
+        ("⑦最多凸武器精錬", d[6]),
+        ("⑧その他武器精錬合計", d[7]),
+        ("⑨討伐タイム(秒)", d[8]),
+    ]
+
+    desc = "```yaml\n"
+    for k, v in labels:
+        desc += f"{k}: {v}\n"
+    desc += "```"
+
+    embed = discord.Embed(
+        title=f"極限編成トライアル: {team_name}",
+        description=desc,
+        color=discord.Color.purple()
+    )
+
+    if result:
+        score, a, c, w = result
+        result_text = (
+            "```diff\n"
+            f"+ 総合スコア : {score:.2f}\n"
+            f"聖遺物係数   : {a:.2f}\n"
+            f"キャラ係数   : {c:.2f}\n"
+            f"武器係数     : {w:.2f}\n"
+            "```"
+        )
+        embed.add_field(name="計算結果", value=result_text, inline=False)
+
+    embed.add_field(name="_data", value=data_str, inline=False)
+
+    return embed
+
 class TrialEditModal(discord.ui.Modal):
     def __init__(self, message, part):
-        # 項目数に合わせてモーダルを切り替える
         title = "極限トライアル入力 (1/2: 聖遺物・キャラ)" if part == 1 else "極限トライアル入力 (2/2: 武器・タイム)"
         super().__init__(title=title)
+
         self.message = message
         self.part = part
-        # _data から現在の値を取得
+
         data = [f.value for f in message.embeds[0].fields if f.name == "_data"][0].split(',')
         self.d = data
-        
         self.inputs = []
+
         labels = [
             ["①聖遺物スコア", "②☆5キャラ人数", "③最大凸数", "④その他凸合計", "⑤☆5武器数"],
             ["⑥☆3武器数", "⑦最多凸武器精錬", "⑧その他武器精錬合計", "⑨討伐タイム(秒)"]
         ]
-        
-        for label in labels[part-1]:
-            # 現在の値をデフォルト値としてセット
+
+        for label in labels[part - 1]:
             idx = labels[0].index(label) if part == 1 else labels[1].index(label) + 5
-            ti = discord.ui.TextInput(label=label, default=str(self.d[idx]), style=discord.TextStyle.short)
+            ti = discord.ui.TextInput(
+                label=label,
+                default=str(self.d[idx]),
+                style=discord.TextStyle.short
+            )
             self.add_item(ti)
             self.inputs.append(ti)
 
     async def on_submit(self, i: discord.Interaction):
         new_d = self.d[:]
+
         for idx, ti in enumerate(self.inputs):
             target_idx = idx if self.part == 1 else idx + 5
             new_d[target_idx] = ti.value
-        
-        # Embedの更新 (現在の内容を保持して_dataだけ書き換える)
-        embed = i.message.embeds[0]
-        embed.set_field_at(0, name="_data", value=",".join(new_d), inline=False)
-        # 必要に応じて description の表示もここで更新可能
-        await i.response.edit_message(embed=embed)
 
-# --- Viewクラス (ボタンのみ) ---
+        data_str = ",".join(new_d)
+
+        team_name = i.message.embeds[0].title.replace(
+            "極限編成トライアル: ",
+            ""
+        )
+
+        new_embed = build_extreme_embed(team_name, data_str)
+
+        await i.response.edit_message(embed=new_embed)
+
 class ExtremeTrialView(discord.ui.View):
-    def __init__(self): super().__init__(timeout=None)
+    def __init__(self):
+        super().__init__(timeout=None)
 
     @discord.ui.button(label="入力1 (1-5)", style=discord.ButtonStyle.primary, custom_id="tr_1")
-    async def b1(self, i, b): await i.response.send_modal(TrialEditModal(i.message, 1))
-    
+    async def b1(self, i, b):
+        await i.response.send_modal(TrialEditModal(i.message, 1))
+
     @discord.ui.button(label="入力2 (6-9)", style=discord.ButtonStyle.primary, custom_id="tr_2")
-    async def b2(self, i, b): await i.response.send_modal(TrialEditModal(i.message, 2))
-    
+    async def b2(self, i, b):
+        await i.response.send_modal(TrialEditModal(i.message, 2))
+
     @discord.ui.button(label="計算実行", style=discord.ButtonStyle.success, custom_id="tr_calc")
     async def b3(self, i, b):
         data_str = [f.value for f in i.message.embeds[0].fields if f.name == "_data"][0]
         d_list = data_str.split(',')
-        # d_list を辞書に変換して計算関数に渡す
-        d = {'artifact_score': float(d_list[0]), 'char_count': int(d_list[1]), 'max_c_const': int(d_list[2]), 
-             'sum_c_const': int(d_list[3]), 'w5_count': int(d_list[4]), 'w3_count': int(d_list[5]), 
-             'max_w_refine': int(d_list[6]), 'sum_w_refine': int(d_list[7]), 'time': int(d_list[8])}
-        
-        score, a, c, w = calculate_extreme_score(d) # 既存の計算関数を呼び出し
-        await i.response.send_message(f"計算結果: {score:.2f} pt (聖遺物:{a}, キャラ:{c:.2f}, 武器:{w:.2f})", ephemeral=True)
 
-# --- 起動コマンド ---
+        try:
+            d = {
+                'artifact_score': float(d_list[0]),
+                'char_count': int(d_list[1]),
+                'max_c_const': int(d_list[2]),
+                'sum_c_const': int(d_list[3]),
+                'w5_count': int(d_list[4]),
+                'w3_count': int(d_list[5]),
+                'max_w_refine': int(d_list[6]),
+                'sum_w_refine': int(d_list[7]),
+                'time': int(d_list[8])
+            }
+        except ValueError:
+            return await i.response.send_message(
+                "数値以外が入力されています。",
+                ephemeral=True
+            )
+
+        score, a, c, w = calculate_extreme_score(d)
+
+        team_name = i.message.embeds[0].title.replace(
+            "極限編成トライアル: ",
+            ""
+        )
+
+        new_embed = build_extreme_embed(
+            team_name,
+            data_str,
+            (score, a, c, w)
+        )
+
+        await i.response.edit_message(embed=new_embed)
+
 @bot.tree.command(name="extreme-trial", description="極限編成トライアルを開始")
 async def extreme_trial(interaction: discord.Interaction, team_name: str):
     view = ExtremeTrialView()
-    # 初期データ (9項目分)
-    initial_data = "200.0,4,0,0,0,0,1,0,60"
-    embed = discord.Embed(title=f"極限編成トライアル: {team_name}", color=discord.Color.purple())
-    embed.add_field(name="_data", value=initial_data, inline=False)
-    await interaction.response.send_message(embed=embed, view=view)
+
+    initial_data = "150.0,0,0,0,0,0,0,0,60"
+
+    embed = build_extreme_embed(team_name, initial_data)
+
+    await interaction.response.send_message(
+        embed=embed,
+        view=view
+    )
 
 if __name__ == "__main__":
     Thread(target=run_web_server, daemon=True).start()
