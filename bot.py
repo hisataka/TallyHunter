@@ -201,11 +201,11 @@ def calculate_extreme_score(d):
     base_char = {4: 0.25, 3: 0.5, 2: 1.0, 1: 1.75, 0: 3.0}
     c_coeff = base_char.get(d['char_count'], 0.25)
     c_penalty = (d['max_c_const'] * 0.15) + (d['sum_c_const'] / 10)
-    c_coeff = max(0.05, c_coeff - c_penalty)
+    c_coeff = c_coeff - c_penalty
 
     w_coeff = 2.25 - (d['w5_count'] * 0.5) + (d['w3_count'] * 0.5)
     w_penalty = (d['max_w_refine'] * 0.2) + (d['sum_w_refine'] / 15)
-    w_coeff = max(0.05, w_coeff - w_penalty)
+    w_coeff = w_coeff - w_penalty
 
     a_coeff = get_artifact_coeff(d['artifact_score'])
 
