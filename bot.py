@@ -178,6 +178,77 @@ async def start(interaction: discord.Interaction, team_name: str, minutes: int =
     view = HuntView()
     await interaction.response.send_message(embed=view.get_embed(team_name, 0, counts, end_t, interaction.user.id, is_host_mode), view=view)
 
+
+# --- 極限編成トライアル用計算ロジック ---
+def calculate_extreme_score(d):
+    def get_artifact_coeff(s):
+        if s >= 200: return 0.25
+        if s >= 180: return 0.5
+        if s >= 170: return 0.75
+        if s >= 160: return 1.0
+        if s >= 140: return 1.75
+        if s >= 120: return 2.5
+        if s >= 100: return 3.5
+        return 6.0
+
+    base_char = {4: 0.25, 3: 0.5, 2: 1.0, 1: 1.75, 0: 3.0}
+    c_coeff = base_char.get(d['char_count'], 0.25)
+    c_penalty = (d['max_c_const'] * 0.15) + (d['sum_c_const'] / 10)
+    c_coeff = max(0.05, c_coeff - c_penalty)
+
+    w_coeff = 2.25 - (d['w5_count'] * 0.5) + (d['w3_count'] * 0.5)
+    w_penalty = (d['max_w_refine'] * 0.25) + (d['sum_w_refine'] / 15)
+    w_coeff = max(0.05, w_coeff - w_penalty)
+
+    a_coeff = get_artifact_coeff(d['artifact_score'])
+    
+    if d['time'] > d['limit']: time_score = 0
+    else: time_score = d['limit'] - (d['time']**2 / d['limit'])
+    
+    return (a_coeff + c_coeff + w_coeff) * max(0, time_score), a_coeff, c_coeff, w_coeff
+
+# --- モーダル定義 ---
+class ExtremeSecondModal(discord.ui.Modal, title="極限編成トライアル入力(2/2)"):
+    def __init__(self, team_name, first_data, limit):
+        super().__init__()
+        self.team_name, self.first_data, self.limit = team_name, first_data, limit
+        self.w5_count = discord.ui.TextInput(label="⑤☆5武器の本数", placeholder="0")
+        self.w3_count = discord.ui.TextInput(label="⑥☆3武器の本数", placeholder="0")
+        self.max_w_refine = discord.ui.TextInput(label="⑦最多凸☆5武器の精錬ランク", placeholder="1")
+        self.sum_w_refine = discord.ui.TextInput(label="⑧その他☆5武器精錬合計", placeholder="0")
+        self.time = discord.ui.TextInput(label="⑨討伐タイム(秒)", placeholder="60")
+        for item in [self.w5_count, self.w3_count, self.max_w_refine, self.sum_w_refine, self.time]: self.add_item(item)
+
+    async def on_submit(self, i: discord.Interaction):
+        d = self.first_data
+        d.update({'w5_count': int(self.w5_count.value), 'w3_count': int(self.w3_count.value),
+                  'max_w_refine': int(self.max_w_refine.value), 'sum_w_refine': int(self.sum_w_refine.value),
+                  'time': int(self.time.value), 'limit': self.limit})
+        score, a_c, c_c, w_c = calculate_extreme_score(d)
+        embed = discord.Embed(title=f"結果: {self.team_name}", color=discord.Color.green())
+        embed.description = f"聖遺物係数: {a_c}\nキャラ係数: {c_c:.2f}\n武器係数: {w_c:.2f}\n討伐タイム: {d['time']}秒"
+        embed.add_field(name="トータルスコア", value=f"**{score:.2f} pt**")
+        await i.response.send_message(embed=embed)
+
+class ExtremeFirstModal(discord.ui.Modal, title="極限編成トライアル入力(1/2)"):
+    def __init__(self, team_name, limit):
+        super().__init__()
+        self.team_name, self.limit = team_name, limit
+        self.a_score = discord.ui.TextInput(label="①PT内最高聖遺物スコア", placeholder="200.0")
+        self.c_count = discord.ui.TextInput(label="②☆5キャラの編成人数", placeholder="4")
+        self.max_c_const = discord.ui.TextInput(label="③最多凸☆5キャラの凸数", placeholder="0")
+        self.sum_c_const = discord.ui.TextInput(label="④その他☆5キャラ凸合計", placeholder="0")
+        for item in [self.a_score, self.c_count, self.max_c_const, self.sum_c_const]: self.add_item(item)
+
+    async def on_submit(self, i: discord.Interaction):
+        data = {'artifact_score': float(self.a_score.value), 'char_count': int(self.c_count.value),
+                'max_c_const': int(self.max_c_const.value), 'sum_c_const': int(self.sum_c_const.value)}
+        await i.response.send_modal(ExtremeSecondModal(self.team_name, data, self.limit))
+
+@bot.tree.command(name="extreme-trial", description="極限編成トライアルのスコア算出")
+async def extreme_trial(interaction: discord.Interaction, team_name: str, limit_seconds: int = 300):
+    await interaction.response.send_modal(ExtremeFirstModal(team_name, limit_seconds))
+
 if __name__ == "__main__":
     Thread(target=run_web_server, daemon=True).start()
     bot.run(TOKEN)
