@@ -17,7 +17,6 @@ def run_web_server():
     port = int(os.getenv("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
-# ポイント表
 POINTS = {
     "SS": 350, "S": 220, "A": 150, "B": 100, "C": 60, 
     "変ヒル": 200, "豪華": 500, "貴重": 300, "普通&精巧": 200, 
@@ -25,65 +24,38 @@ POINTS = {
 }
 BOSS_MAPPING = {"SS": "地方伝説すべて", "S": "黄金王獣・純水精霊", "A": "無相草・ダック・霊主", "B": "その他フィールドボス", "C": "急凍樹・爆炎樹"}
 
-# 修正用モーダル（討伐系）
-class EditHuntModal(discord.ui.Modal):
-    def __init__(self, message, end_time, host_id, is_host_mode, counts):
-        super().__init__(title='討伐数の修正')
+class EditModal(discord.ui.Modal):
+    def __init__(self, message, end_time, host_id, is_host_mode, counts, targets, title):
+        super().__init__(title=title)
         self.message, self.end_time = message, end_time
         self.host_id, self.is_host_mode = host_id, is_host_mode
-        self.targets = ["SS", "S", "A", "B", "C", "変ヒル"]
         self.inputs = {}
-        for k in self.targets:
+        for k in targets:
             ti = discord.ui.TextInput(label=k, default=str(counts[k]), placeholder='0', required=True)
             self.add_item(ti)
             self.inputs[k] = ti
 
     async def on_submit(self, i: discord.Interaction):
-        await update_counts_logic(i, self.message, self.inputs, self.end_time, self.host_id, self.is_host_mode)
-
-# 修正用モーダル（採集系）
-class EditCollectModal(discord.ui.Modal):
-    def __init__(self, message, end_time, host_id, is_host_mode, counts):
-        super().__init__(title='採集・釣果の修正')
-        self.message, self.end_time = message, end_time
-        self.host_id, self.is_host_mode = host_id, is_host_mode
-        self.targets = ["釣り", "豪華", "貴重", "普通&精巧", "原型"]
-        self.inputs = {}
-        for k in self.targets:
-            ti = discord.ui.TextInput(label=k, default=str(counts[k]), placeholder='0', required=True)
-            self.add_item(ti)
-            self.inputs[k] = ti
-
-    async def on_submit(self, i: discord.Interaction):
-        await update_counts_logic(i, self.message, self.inputs, self.end_time, self.host_id, self.is_host_mode)
-
-# 共通更新ロジック
-async def update_counts_logic(i, message, inputs, end_time, host_id, is_host_mode):
-    counts = ResultView.get_counts_static(message)
-    try:
-        for k, ti in inputs.items():
-            counts[k] = int(ti.value)
-    except ValueError:
-        return await i.response.send_message("すべて数字で入力してください。", ephemeral=True)
-    
-    new_score = sum(counts[k] * POINTS[k] for k in POINTS.keys())
-    new_embed = HuntView().get_embed(message.embeds[0].title.split(': ')[-1], new_score, counts, end_time, host_id, is_host_mode, True)
-    await i.response.edit_message(embed=new_embed, view=ResultView(message, end_time, host_id, is_host_mode))
+        counts = ResultView.get_counts_static(self.message)
+        try:
+            for k, ti in self.inputs.items(): counts[k] = int(ti.value)
+        except ValueError:
+            return await i.response.send_message("数字で入力してください。", ephemeral=True)
+        new_score = sum(counts[k] * POINTS[k] for k in POINTS.keys())
+        new_embed = HuntView().get_embed(self.message.embeds[0].title.split(': ')[-1], new_score, counts, self.end_time, self.host_id, self.is_host_mode, True)
+        await i.response.edit_message(embed=new_embed, view=ResultView(self.message, self.end_time, self.host_id, self.is_host_mode))
 
 class HuntView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
+    def __init__(self): super().__init__(timeout=None)
 
     def get_embed(self, team_name, score, counts, end_time, host_id, is_host_mode, final=False):
         counts_str = ",".join([str(counts.get(k, 0)) for k in POINTS.keys()])
         data_value = f"{score}|{end_time}|{host_id}|{int(is_host_mode)}|{counts_str}"
-
         if final:
             lines = ["```diff", "+ 狩猟結果詳細", "--------------------------"]
             for k, v in POINTS.items():
                 if counts.get(k, 0) > 0: lines.append(f"{k:2}: {counts[k]:2}回 × {v:3}pt = {counts[k]*v:4}pt")
-            lines.append("--------------------------")
-            lines.append(f"最終合計: {score} pt```")
+            lines.append("--------------------------"); lines.append(f"最終合計: {score} pt```")
             embed = discord.Embed(title=f"🏁 終了: {team_name}", description="\n".join(lines), color=discord.Color.gold())
             embed.add_field(name="_data", value=data_value, inline=False)
             return embed
@@ -101,20 +73,19 @@ class HuntView(discord.ui.View):
 
     async def end_hunt_logic(self, message):
         counts = ResultView.get_counts_static(message)
-        data = [field.value for field in message.embeds[0].fields if field.name == "_data"][0].split('|')
-        score, end_time, host_id, is_host_mode = int(data[0]), int(data[1]), int(data[2]), bool(int(data[3]))
-        await message.edit(embed=self.get_embed(message.embeds[0].title.split(': ')[-1], score, counts, end_time, host_id, is_host_mode, True), view=ResultView(message, end_time, host_id, is_host_mode))
+        data = [f.value for f in message.embeds[0].fields if f.name == "_data"][0].split('|')
+        await message.edit(embed=self.get_embed(message.embeds[0].title.split(': ')[-1], int(data[0]), counts, int(data[1]), int(data[2]), bool(int(data[3])), True), view=ResultView(message, int(data[1]), int(data[2]), bool(int(data[3]))))
 
     async def update(self, i, key):
         counts = ResultView.get_counts_static(i.message)
-        data = [field.value for field in i.message.embeds[0].fields if field.name == "_data"][0].split('|')
-        score, end_time, host_id, is_host_mode = int(data[0]), int(data[1]), int(data[2]), bool(int(data[3]))
-        if is_host_mode and i.user.id != host_id: return await i.response.send_message("ホストのみ操作可能です。", ephemeral=True)
-        if time.time() > end_time:
+        data = [f.value for f in i.message.embeds[0].fields if f.name == "_data"][0].split('|')
+        if bool(int(data[3])) and i.user.id != int(data[2]): return await i.response.send_message("ホストのみ操作可能です。", ephemeral=True)
+        if time.time() > int(data[1]):
             await self.end_hunt_logic(i.message)
             return await i.response.send_message("大会は終了しました。", ephemeral=True)
-        score += POINTS[key]; counts[key] += 1
-        await i.response.edit_message(embed=self.get_embed(i.message.embeds[0].title.split(': ')[-1], score, counts, end_time, host_id, is_host_mode), view=self)
+        counts[key] += 1
+        new_score = sum(counts[k] * POINTS[k] for k in POINTS.keys())
+        await i.response.edit_message(embed=self.get_embed(i.message.embeds[0].title.split(': ')[-1], new_score, counts, int(data[1]), int(data[2]), bool(int(data[3]))), view=self)
 
     @discord.ui.button(label="SS", style=discord.ButtonStyle.danger, custom_id="h1")
     async def b1(self, i, b): await self.update(i, "SS")
@@ -126,9 +97,9 @@ class HuntView(discord.ui.View):
     async def b4(self, i, b): await self.update(i, "B")
     @discord.ui.button(label="C", style=discord.ButtonStyle.danger, custom_id="h5")
     async def b5(self, i, b): await self.update(i, "C")
-    @discord.ui.button(label="変ヒル", style=discord.ButtonStyle.danger, custom_id="h6")
+    @discord.ui.button(label="変ヒル", style=discord.ButtonStyle.primary, custom_id="h6")
     async def b6(self, i, b): await self.update(i, "変ヒル")
-    @discord.ui.button(label="釣り", style=discord.ButtonStyle.primary, custom_id="h7")
+    @discord.ui.button(label="釣り", style=discord.ButtonStyle.success, custom_id="h7")
     async def b7(self, i, b): await self.update(i, "釣り")
     @discord.ui.button(label="豪華", style=discord.ButtonStyle.success, custom_id="h8")
     async def c1(self, i, b): await self.update(i, "豪華")
@@ -139,10 +110,7 @@ class HuntView(discord.ui.View):
     @discord.ui.button(label="原型", style=discord.ButtonStyle.success, custom_id="h12")
     async def c4(self, i, b): await self.update(i, "原型")
     @discord.ui.button(label="強制終了", style=discord.ButtonStyle.secondary, custom_id="h11")
-    async def end_btn(self, i, b):
-        data = [field.value for field in i.message.embeds[0].fields if field.name == "_data"][0].split('|')
-        if bool(int(data[3])) and i.user.id != int(data[2]): return await i.response.send_message("ホストのみ可能です。", ephemeral=True)
-        await self.end_hunt_logic(i.message)
+    async def end_btn(self, i, b): await self.end_hunt_logic(i.message)
 
 class ResultView(discord.ui.View):
     def __init__(self, message, end_time, host_id, is_host_mode):
@@ -152,18 +120,18 @@ class ResultView(discord.ui.View):
 
     @staticmethod
     def get_counts_static(message):
-        data = [field.value for field in message.embeds[0].fields if field.name == "_data"][0].split('|')
+        data = [f.value for f in message.embeds[0].fields if f.name == "_data"][0].split('|')
         return {k: int(data[4].split(',')[idx]) for idx, k in enumerate(POINTS.keys())}
 
-    @discord.ui.button(label="討伐修正", style=discord.ButtonStyle.danger, custom_id="fix_hunt")
+    @discord.ui.button(label="討伐修正", style=discord.ButtonStyle.danger)
     async def fix_hunt(self, i, b):
-        if self.is_host_mode and i.user.id != self.host_id: return await i.response.send_message("ホストのみです。", ephemeral=True)
-        await i.response.send_modal(EditHuntModal(i.message, self.end_time, self.host_id, self.is_host_mode, self.get_counts_static(i.message)))
-
-    @discord.ui.button(label="採集修正", style=discord.ButtonStyle.success, custom_id="fix_collect")
+        await i.response.send_modal(EditModal(i.message, self.end_time, self.host_id, self.is_host_mode, self.get_counts_static(i.message), ["SS", "S", "A", "B", "C"], "討伐修正"))
+    @discord.ui.button(label="変ヒル修正", style=discord.ButtonStyle.primary)
+    async def fix_hilly(self, i, b):
+        await i.response.send_modal(EditModal(i.message, self.end_time, self.host_id, self.is_host_mode, self.get_counts_static(i.message), ["変ヒル"], "変ヒル修正"))
+    @discord.ui.button(label="採集修正", style=discord.ButtonStyle.success)
     async def fix_collect(self, i, b):
-        if self.is_host_mode and i.user.id != self.host_id: return await i.response.send_message("ホストのみです。", ephemeral=True)
-        await i.response.send_modal(EditCollectModal(i.message, self.end_time, self.host_id, self.is_host_mode, self.get_counts_static(i.message)))
+        await i.response.send_modal(EditModal(i.message, self.end_time, self.host_id, self.is_host_mode, self.get_counts_static(i.message), ["釣り", "豪華", "貴重", "普通&精巧", "原型"], "採集修正"))
 
 class HuntBot(commands.Bot):
     def __init__(self):
