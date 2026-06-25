@@ -24,6 +24,12 @@ POINTS = {
 }
 BOSS_MAPPING = {"SS": "地方伝説すべて", "S": "黄金王獣・純水精霊", "A": "無相草・ダック・霊主", "B": "その他フィールドボス", "C": "急凍樹・爆炎樹"}
 
+# 権限チェック用ヘルパー
+def is_authorized(i, host_id, is_host_mode):
+    if is_host_mode and i.user.id != host_id:
+        return False
+    return True
+
 class EditModal(discord.ui.Modal):
     def __init__(self, message, end_time, host_id, is_host_mode, counts, targets, title):
         super().__init__(title=title)
@@ -36,6 +42,8 @@ class EditModal(discord.ui.Modal):
             self.inputs[k] = ti
 
     async def on_submit(self, i: discord.Interaction):
+        if not is_authorized(i, self.host_id, self.is_host_mode):
+            return await i.response.send_message("ホストのみ操作可能です。", ephemeral=True)
         counts = ResultView.get_counts_static(self.message)
         try:
             for k, ti in self.inputs.items(): counts[k] = int(ti.value)
@@ -71,49 +79,56 @@ class HuntView(discord.ui.View):
         embed.add_field(name="_data", value=data_value, inline=False)
         return embed
 
-    async def end_hunt_logic(self, message):
-        counts = ResultView.get_counts_static(message)
-        data = [f.value for f in message.embeds[0].fields if f.name == "_data"][0].split('|')
-        await message.edit(embed=self.get_embed(message.embeds[0].title.split(': ')[-1], int(data[0]), counts, int(data[1]), int(data[2]), bool(int(data[3])), True), view=ResultView(message, int(data[1]), int(data[2]), bool(int(data[3]))))
-
-    async def update(self, i, key):
-        counts = ResultView.get_counts_static(i.message)
+    async def _handle_update(self, i, key):
         data = [f.value for f in i.message.embeds[0].fields if f.name == "_data"][0].split('|')
-        if bool(int(data[3])) and i.user.id != int(data[2]): return await i.response.send_message("ホストのみ操作可能です。", ephemeral=True)
+        host_id, is_host_mode = int(data[2]), bool(int(data[3]))
+        if not is_authorized(i, host_id, is_host_mode):
+            return await i.response.send_message("ホストのみ操作可能です。", ephemeral=True)
+        
+        counts = ResultView.get_counts_static(i.message)
         if time.time() > int(data[1]):
             await self.end_hunt_logic(i.message)
             return await i.response.send_message("大会は終了しました。", ephemeral=True)
         counts[key] += 1
         new_score = sum(counts[k] * POINTS[k] for k in POINTS.keys())
-        await i.response.edit_message(embed=self.get_embed(i.message.embeds[0].title.split(': ')[-1], new_score, counts, int(data[1]), int(data[2]), bool(int(data[3]))), view=self)
+        await i.response.edit_message(embed=self.get_embed(i.message.embeds[0].title.split(': ')[-1], new_score, counts, int(data[1]), host_id, is_host_mode), view=self)
+
+    async def end_hunt_logic(self, message):
+        counts = ResultView.get_counts_static(message)
+        data = [f.value for f in message.embeds[0].fields if f.name == "_data"][0].split('|')
+        await message.edit(embed=self.get_embed(message.embeds[0].title.split(': ')[-1], int(data[0]), counts, int(data[1]), int(data[2]), bool(int(data[3])), True), view=ResultView(message, int(data[1]), int(data[2]), bool(int(data[3]))))
 
     @discord.ui.button(label="SS", style=discord.ButtonStyle.danger, custom_id="h1")
-    async def b1(self, i, b): await self.update(i, "SS")
+    async def b1(self, i, b): await self._handle_update(i, "SS")
     @discord.ui.button(label="S", style=discord.ButtonStyle.danger, custom_id="h2")
-    async def b2(self, i, b): await self.update(i, "S")
+    async def b2(self, i, b): await self._handle_update(i, "S")
     @discord.ui.button(label="A", style=discord.ButtonStyle.danger, custom_id="h3")
-    async def b3(self, i, b): await self.update(i, "A")
+    async def b3(self, i, b): await self._handle_update(i, "A")
     @discord.ui.button(label="B", style=discord.ButtonStyle.danger, custom_id="h4")
-    async def b4(self, i, b): await self.update(i, "B")
+    async def b4(self, i, b): await self._handle_update(i, "B")
     @discord.ui.button(label="C", style=discord.ButtonStyle.danger, custom_id="h5")
-    async def b5(self, i, b): await self.update(i, "C")
+    async def b5(self, i, b): await self._handle_update(i, "C")
     @discord.ui.button(label="変ヒル", style=discord.ButtonStyle.primary, custom_id="h6")
-    async def b6(self, i, b): await self.update(i, "変ヒル")
+    async def b6(self, i, b): await self._handle_update(i, "変ヒル")
     @discord.ui.button(label="釣り", style=discord.ButtonStyle.success, custom_id="h7")
-    async def b7(self, i, b): await self.update(i, "釣り")
+    async def b7(self, i, b): await self._handle_update(i, "釣り")
     @discord.ui.button(label="豪華", style=discord.ButtonStyle.success, custom_id="h8")
-    async def c1(self, i, b): await self.update(i, "豪華")
+    async def c1(self, i, b): await self._handle_update(i, "豪華")
     @discord.ui.button(label="貴重", style=discord.ButtonStyle.success, custom_id="h9")
-    async def c2(self, i, b): await self.update(i, "貴重")
+    async def c2(self, i, b): await self._handle_update(i, "貴重")
     @discord.ui.button(label="普通&精巧", style=discord.ButtonStyle.success, custom_id="h10")
-    async def c3(self, i, b): await self.update(i, "普通&精巧")
+    async def c3(self, i, b): await self._handle_update(i, "普通&精巧")
     @discord.ui.button(label="原型", style=discord.ButtonStyle.success, custom_id="h12")
-    async def c4(self, i, b): await self.update(i, "原型")
+    async def c4(self, i, b): await self._handle_update(i, "原型")
     @discord.ui.button(label="強制終了", style=discord.ButtonStyle.secondary, custom_id="h11")
-    async def end_btn(self, i, b): await self.end_hunt_logic(i.message)
+    async def end_btn(self, i, b):
+        data = [f.value for f in i.message.embeds[0].fields if f.name == "_data"][0].split('|')
+        if not is_authorized(i, int(data[2]), bool(int(data[3]))):
+            return await i.response.send_message("ホストのみ操作可能です。", ephemeral=True)
+        await self.end_hunt_logic(i.message)
 
 class ResultView(discord.ui.View):
-    def __init__(self, message, end_time, host_id, is_host_mode):
+    def __init__(self, message=None, end_time=None, host_id=None, is_host_mode=None):
         super().__init__(timeout=None)
         self.message, self.end_time = message, end_time
         self.host_id, self.is_host_mode = host_id, is_host_mode
@@ -125,12 +140,15 @@ class ResultView(discord.ui.View):
 
     @discord.ui.button(label="討伐修正", style=discord.ButtonStyle.danger, custom_id="res_fix_hunt")
     async def fix_hunt(self, i, b):
+        if not is_authorized(i, self.host_id, self.is_host_mode): return await i.response.send_message("ホストのみ操作可能です。", ephemeral=True)
         await i.response.send_modal(EditModal(i.message, self.end_time, self.host_id, self.is_host_mode, self.get_counts_static(i.message), ["SS", "S", "A", "B", "C"], "討伐修正"))
     @discord.ui.button(label="変ヒル修正", style=discord.ButtonStyle.primary, custom_id="res_fix_hilly")
     async def fix_hilly(self, i, b):
+        if not is_authorized(i, self.host_id, self.is_host_mode): return await i.response.send_message("ホストのみ操作可能です。", ephemeral=True)
         await i.response.send_modal(EditModal(i.message, self.end_time, self.host_id, self.is_host_mode, self.get_counts_static(i.message), ["変ヒル"], "変ヒル修正"))
     @discord.ui.button(label="採集修正", style=discord.ButtonStyle.success, custom_id="res_fix_collect")
     async def fix_collect(self, i, b):
+        if not is_authorized(i, self.host_id, self.is_host_mode): return await i.response.send_message("ホストのみ操作可能です。", ephemeral=True)
         await i.response.send_modal(EditModal(i.message, self.end_time, self.host_id, self.is_host_mode, self.get_counts_static(i.message), ["釣り", "豪華", "貴重", "普通&精巧", "原型"], "採集修正"))
 
 class HuntBot(commands.Bot):
@@ -138,7 +156,7 @@ class HuntBot(commands.Bot):
         super().__init__(command_prefix="!", intents=discord.Intents.all())
     async def setup_hook(self):
         self.add_view(HuntView())
-        self.add_view(ResultView(None, None, None, None))
+        self.add_view(ResultView()) # デフォルト引数で初期化可能に
         self.auto_end.start()
         await self.tree.sync()
 
